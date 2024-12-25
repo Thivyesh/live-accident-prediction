@@ -7,6 +7,9 @@ from dotenv import load_dotenv
 import threading
 from queue import Queue, Empty
 import time
+import pygame
+import sounddevice as sd
+import numpy as np
 
 # Load environment variables from .env file
 load_dotenv()
@@ -14,7 +17,7 @@ load_dotenv()
 class SceneDescriber:
     def __init__(self):
         # Initialize YOLO model
-        self.yolo = YOLO("yolov8n.pt")
+        self.yolo = YOLO("yolo11n.pt")
         
         # Initialize OpenAI client
         api_key = os.getenv('OPENAI_API_KEY')
@@ -25,6 +28,10 @@ class SceneDescriber:
         # Initialize threading components
         self.description_queue = Queue()
         self.processing = False
+        
+        # Simplified audio initialization
+        self.current_audio = None
+        pygame.init()
     
     def detect_objects(self, frame):
         """Run YOLO object detection"""
@@ -55,6 +62,16 @@ class SceneDescriber:
             )
             thread.daemon = True
             thread.start()
+    
+    def _stream_audio(self, response):
+        """Stream audio in real-time using sounddevice"""
+        try:
+            # Convert response content to numpy array and play
+            audio_array = np.frombuffer(response.content, dtype=np.float32)
+            sd.play(audio_array, samplerate=24000, blocking=False)
+            
+        except Exception as e:
+            print(f"Error streaming audio: {e}")
     
     def _describe_scene_thread(self, frame, detected_objects):
         """Thread function for scene description"""
@@ -88,11 +105,39 @@ class SceneDescriber:
             
             description = response.choices[0].message.content
             print(f"Got description: {description}")  # Debug print
+            
+            # Generate speech in a separate thread
+            self._generate_and_play_speech(description)
+            
             self.description_queue.put(description)
         except Exception as e:
-            print(f"Error in description thread: {e}")  # Debug print
+            print(f"Error in description thread: {e}")
         finally:
             self.processing = False
+    
+    def _generate_and_play_speech(self, text):
+        """Generate and stream speech using OpenAI's TTS"""
+        try:
+            response = self.client.audio.speech.create(
+                model="tts-1",
+                voice="alloy",
+                input=text
+            )
+            
+            # Start audio streaming in a separate thread
+            audio_thread = threading.Thread(
+                target=self._stream_audio,
+                args=(response,)
+            )
+            audio_thread.daemon = True
+            audio_thread.start()
+            
+        except Exception as e:
+            print(f"Error generating or streaming speech: {e}")
+    
+    def __del__(self):
+        """Cleanup audio resources"""
+        sd.stop()
 
 def main():
     cap = cv2.VideoCapture(0)
@@ -120,8 +165,6 @@ def main():
         try:
             while True:  # Get the most recent description
                 description = describer.description_queue.get_nowait()
-                if len(description) == 0:
-                    print("No description available")
         except Empty:
             pass
         
