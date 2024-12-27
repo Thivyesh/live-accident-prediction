@@ -11,7 +11,7 @@ import json
 from datetime import datetime
 from collections import defaultdict
 import numpy as np
-import re
+
 
 # Load environment variables from .env file
 load_dotenv()
@@ -450,11 +450,11 @@ Rate the accident risk from 1-10 and explain why, considering:
                         last_pos = np.array(trajectory[-1])
                         prev_pos = np.array(trajectory[-2])
                         speed = np.linalg.norm(last_pos - prev_pos)
-                        direction = "erratic" if self._is_erratic(trajectory) else "stable"
+
                     else:
                         speed = 0
                         last_pos = np.array([x, y])
-                        direction = "stationary"
+
                     
                     vehicle_states[track_id] = {
                         'position': last_pos,
