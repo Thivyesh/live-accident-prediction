@@ -18,7 +18,11 @@ def main():
     # Initialize components
     detector = ObjectDetector()
     tracker = TrajectoryTracker()
-    analyzer = RiskAnalyzer(api_key)
+    analyzer = RiskAnalyzer(
+        provider='ollama',
+        model='llama3.2-vision:latest',
+        ollama_host='http://localhost:11434'
+    )
     visualizer = RiskVisualizer()
     video_processor = VideoProcessor()
 
