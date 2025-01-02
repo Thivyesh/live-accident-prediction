@@ -185,36 +185,32 @@ Rate the accident risk from 1-10 and explain why, considering:
             try:
                 payload = {
                     "model": self.model,
-                    "messages": [{
-                        "role": "user",
-                        "content": prompt,
-                        "images": [base64_image]
-                    }]
+                    "prompt": prompt,
+                    "images": [base64_image],
+                    "stream": False
                 }
                 
-                print(f"Sending request to Ollama at: {self.ollama_host}/api/chat")
+                print(f"Sending request to Ollama at: {self.ollama_host}/api/generate")
                 print(f"Using model: {self.model}")
-                print(f"Prompt length: {len(prompt)}")
-                print(f"Image data length: {len(base64_image)}")
                 
                 response = requests.post(
-                    f"{self.ollama_host}/api/chat",
+                    f"{self.ollama_host}/api/generate",
                     json=payload,
                     headers={"Content-Type": "application/json"},
                     timeout=60
                 )
                 
                 print(f"Ollama Response Status: {response.status_code}")
-                print(f"Ollama Response Headers: {response.headers}")
-                print(f"Ollama Response: {response.text[:500]}...")
                 
                 if response.status_code == 200:
                     response_data = response.json()
                     print(f"Parsed response data: {response_data}")
-                    if 'message' in response_data and 'content' in response_data['message']:
-                        return response_data['message']['content']
+                    
+                    # Extract response from the new format
+                    if 'response' in response_data:
+                        return response_data['response']
                     else:
-                        print("Response format not as expected:", response_data)
+                        print("Unexpected response format:", response_data)
                         return ""
                 else:
                     print(f"Error from Ollama API: {response.status_code} - {response.text}")

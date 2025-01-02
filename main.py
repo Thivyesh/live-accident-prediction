@@ -20,7 +20,7 @@ def main():
     tracker = TrajectoryTracker()
     analyzer = RiskAnalyzer(
         provider='ollama',
-        model='llama3.2-vision:latest',
+        model='llava:latest',
         ollama_host='http://localhost:11434'
     )
     visualizer = RiskVisualizer()
