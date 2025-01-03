@@ -8,25 +8,36 @@ class VideoProcessor:
     def __init__(self, output_dir="output"):
         self.output_dir = output_dir
         self.timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        os.makedirs(os.path.join(output_dir, self.timestamp), exist_ok=True)
+        self.output_path = os.path.join(output_dir, self.timestamp)
+        os.makedirs(self.output_path, exist_ok=True)
         self.risk_history = []
+        
+        # Create or load existing analysis file
+        self.analysis_file = os.path.join(self.output_path, "analysis.json")
+        if os.path.exists(self.analysis_file):
+            with open(self.analysis_file, 'r') as f:
+                self.risk_history = json.load(f)
 
     def save_analysis_results(self, frame_count, analysis):
         """Save analysis results to JSON"""
         try:
+            # Create new result entry
             result = {
                 'frame': frame_count,
                 'timestamp': time.time(),
                 'analysis': analysis
             }
+            
+            # Append to history
             self.risk_history.append(result)
             
-            output_path = f"{self.output_dir}/{self.timestamp}/analysis.json"
-            print(f"Saving analysis to {output_path}")  # Debug logging
-            print(f"Analysis content: {result}")  # Debug logging
-            
-            with open(output_path, 'w') as f:
+            # Write entire history to file
+            with open(self.analysis_file, 'w') as f:
                 json.dump(self.risk_history, f, indent=4)
                 
+            print(f"Saved analysis for frame {frame_count}")  # Debug logging
+            
         except Exception as e:
-            print(f"Error saving analysis results: {str(e)}") 
+            print(f"Error saving analysis results: {str(e)}")
+            import traceback
+            print(traceback.format_exc()) 

@@ -5,20 +5,33 @@ import threading
 import base64
 import cv2
 import re
+from typing import Literal, Optional
+import requests
+import json
 
 class RiskAnalyzer:
-    def __init__(self, api_key):
-        self.client = OpenAI(api_key=api_key)
+    def __init__(self, api_key: Optional[str] = None, provider: Literal['openai', 'ollama'] = 'openai', 
+                 model: str = None, ollama_host: str = "http://localhost:11434"):
+        self.provider = provider
+        self.ollama_host = ollama_host
+        
+        if provider == 'openai':
+            self.client = OpenAI(api_key=api_key)
+            self.model = model or "gpt-4o-mini"
+        else:
+            self.model = model or "llama3.2-vision:latest"
+        
+        # Rest of the initialization remains the same
         self.scene_queue = Queue()
         self.risk_queue = Queue()
         self.processing = False
         self.risk_threshold = 0.7
         
-        # Current analysis results
         self.current_analysis = {
             'scene_description': "",
             'risk_assessment': "",
-            'risk_score': 0
+            'risk_score': 0,
+            'previous_status': "SAFE"
         }
 
     def analyze_scene(self, frame, detected_objects, trajectory_data):
@@ -42,12 +55,23 @@ class RiskAnalyzer:
     def _analyze_scene(self, base64_image, detected_objects):
         """Analyze scene in separate thread"""
         try:
-            prompt = """You are an expert traffic analyst. Analyze this traffic scene.
+            # Get the complete previous analysis
+            previous_analysis = "No previous analysis available."
+            if self.current_analysis['scene_description']:
+                previous_analysis = self.current_analysis['scene_description']
+
+            prompt = f"""You are an expert traffic analyst. Analyze this traffic scene.
+            Previous frame analysis was:
+            {previous_analysis}
+
             1. Return only the status and a short description of the scene where STATUS should be:
             - COLLISION_RISK (if there is a risk of collision)
             - DAMAGED (if visual damage is detected on a vehicle)
             - COLLIDING (if collision is imminent or occurring)
             - SAFE (If there is no risk of collision or damage)
+            
+            Consider the previous analysis when analyzing the current frame. If the situation is evolving, 
+            explain how it has changed from the previous analysis.
             
             The response should be in the following format:
             STATUS: <status>
@@ -155,22 +179,73 @@ Rate the accident risk from 1-10 and explain why, considering:
         return risk_vehicles
 
     def _get_vision_analysis(self, prompt, base64_image):
-        """Helper method to get vision analysis"""
-        response = self.client.chat.completions.create(
-            model="chatgpt-4o-latest",            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
-                ]
-            }],
-            max_tokens=250
-        )
-        return response.choices[0].message.content
+        """Helper method to get vision analysis from either OpenAI or Ollama"""
+        if self.provider == 'openai':
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                    ]
+                }],
+                max_tokens=250
+            )
+            return response.choices[0].message.content
+        else:
+            try:
+                payload = {
+                    "model": self.model,
+                    "prompt": prompt,
+                    "images": [base64_image],
+                    "stream": False
+                }
+                
+                print(f"Sending request to Ollama at: {self.ollama_host}/api/generate")
+                print(f"Using model: {self.model}")
+                
+                response = requests.post(
+                    f"{self.ollama_host}/api/generate",
+                    json=payload,
+                    headers={"Content-Type": "application/json"},
+                    timeout=60
+                )
+                
+                print(f"Ollama Response Status: {response.status_code}")
+                
+                if response.status_code == 200:
+                    response_data = response.json()
+                    print(f"Parsed response data: {response_data}")
+                    
+                    # Extract response from the new format
+                    if 'response' in response_data:
+                        return response_data['response']
+                    else:
+                        print("Unexpected response format:", response_data)
+                        return ""
+                else:
+                    print(f"Error from Ollama API: {response.status_code} - {response.text}")
+                    return ""
+                    
+            except Exception as e:
+                print(f"Error getting vision analysis: {str(e)}")
+                import traceback
+                print(traceback.format_exc())
+                return ""
 
     def _frame_to_base64(self, frame):
-        """Convert frame to base64 string"""
-        _, buffer = cv2.imencode('.jpg', frame)
+        """Convert frame to base64 string with resizing"""
+        # Resize image to reduce processing time
+        max_dimension = 800
+        height, width = frame.shape[:2]
+        if height > max_dimension or width > max_dimension:
+            scale = max_dimension / max(height, width)
+            frame = cv2.resize(frame, (int(width * scale), int(height * scale)))
+        
+        # Compress image
+        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 85]
+        _, buffer = cv2.imencode('.jpg', frame, encode_param)
         return base64.b64encode(buffer).decode('utf-8')
 
     def update_current_analysis(self):

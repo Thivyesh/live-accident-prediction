@@ -18,7 +18,12 @@ def main():
     # Initialize components
     detector = ObjectDetector()
     tracker = TrajectoryTracker()
-    analyzer = RiskAnalyzer(api_key)
+    analyzer = RiskAnalyzer(
+        provider='ollama',
+        # api_key=api_key,
+        model='llava:latest',
+        ollama_host='http://localhost:11434'
+    )
     visualizer = RiskVisualizer()
     video_processor = VideoProcessor()
 
@@ -49,17 +54,13 @@ def main():
         current_analysis = analyzer.update_current_analysis()
         if current_analysis:
             print(f"Got new analysis at frame {frame_count}")  # Debug logging
+            video_processor.save_analysis_results(frame_count, current_analysis)  # Save whenever we get new analysis
         
         # Visualize results
         annotated_frame = visualizer.draw_frame(
             frame, results, tracker.track_history, 
             analyzer.current_analysis, detected_objects
         )
-        
-        # Save results periodically
-        if frame_count % 300 == 0:
-            print(f"Saving analysis results at frame {frame_count}")  # Debug logging
-            video_processor.save_analysis_results(frame_count, analyzer.current_analysis)
         
         cv2.imshow('Accident Prediction Feed', annotated_frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
