@@ -30,7 +30,8 @@ class RiskAnalyzer:
         self.current_analysis = {
             'scene_description': "",
             'risk_assessment': "",
-            'risk_score': 0
+            'risk_score': 0,
+            'previous_status': "SAFE"
         }
 
     def analyze_scene(self, frame, detected_objects, trajectory_data):
@@ -54,12 +55,23 @@ class RiskAnalyzer:
     def _analyze_scene(self, base64_image, detected_objects):
         """Analyze scene in separate thread"""
         try:
-            prompt = """You are an expert traffic analyst. Analyze this traffic scene.
+            # Get the complete previous analysis
+            previous_analysis = "No previous analysis available."
+            if self.current_analysis['scene_description']:
+                previous_analysis = self.current_analysis['scene_description']
+
+            prompt = f"""You are an expert traffic analyst. Analyze this traffic scene.
+            Previous frame analysis was:
+            {previous_analysis}
+
             1. Return only the status and a short description of the scene where STATUS should be:
             - COLLISION_RISK (if there is a risk of collision)
             - DAMAGED (if visual damage is detected on a vehicle)
             - COLLIDING (if collision is imminent or occurring)
             - SAFE (If there is no risk of collision or damage)
+            
+            Consider the previous analysis when analyzing the current frame. If the situation is evolving, 
+            explain how it has changed from the previous analysis.
             
             The response should be in the following format:
             STATUS: <status>
