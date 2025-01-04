@@ -54,7 +54,16 @@ def main():
         current_analysis = analyzer.update_current_analysis()
         if current_analysis:
             print(f"Got new analysis at frame {frame_count}")  # Debug logging
-            video_processor.save_analysis_results(frame_count, current_analysis)  # Save whenever we get new analysis
+            video_processor.save_analysis_results(frame_count, current_analysis)
+            
+            # Save verification image if there are involved vehicles
+            if current_analysis.get('involved_vehicles'):
+                video_processor.save_verification_image(
+                    frame_count,
+                    frame,
+                    detected_objects,
+                    current_analysis['involved_vehicles']
+                )
         
         # Visualize results
         annotated_frame = visualizer.draw_frame(

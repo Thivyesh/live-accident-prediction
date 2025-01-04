@@ -49,6 +49,27 @@ class RiskAnalyzer:
                 for thread in threads:
                     thread.daemon = True
                     thread.start()
+
+                # Start accident vehicle analysis if needed
+                def check_and_analyze_accidents():
+                    try:
+                        scene_analysis = self.scene_queue.get(timeout=10)  # Wait for scene analysis
+                        if scene_analysis and scene_analysis.get('status') in ['COLLIDING', 'DAMAGED']:
+                            accident_analysis = self._analyze_accident_vehicles(
+                                base64_image, detected_objects, scene_analysis
+                            )
+                            if accident_analysis:
+                                self.current_analysis['involved_vehicles'] = accident_analysis
+                    except Empty:
+                        print("Timeout waiting for scene analysis")
+                    except Exception as e:
+                        print(f"Error in accident analysis: {e}")
+                    finally:
+                        self.processing = False
+
+                accident_thread = threading.Thread(target=check_and_analyze_accidents)
+                accident_thread.daemon = True
+                accident_thread.start()
             else:
                 self.processing = False
 
@@ -64,21 +85,33 @@ class RiskAnalyzer:
             Previous frame analysis was:
             {previous_analysis}
 
-            1. Return only the status and a short description of the scene where STATUS should be:
-            - COLLISION_RISK (if there is a risk of collision)
-            - DAMAGED (if visual damage is detected on a vehicle)
-            - COLLIDING (if collision is imminent or occurring)
-            - SAFE (If there is no risk of collision or damage)
-            
-            Consider the previous analysis when analyzing the current frame. If the situation is evolving, 
-            explain how it has changed from the previous analysis.
-            
-            The response should be in the following format:
-            STATUS: <status>
-            <description>"""
+            Return your analysis in the following JSON format:
+            {{
+                "status": "<COLLISION_RISK|DAMAGED|COLLIDING|SAFE>",
+                "description": "detailed description of the scene",
+                "changes": "description of changes from previous frame"
+            }}
+
+            Status definitions:
+            - COLLISION_RISK: if there is a risk of collision
+            - DAMAGED: if visual damage is detected on a vehicle
+            - COLLIDING: if collision is imminent or occurring
+            - SAFE: if there is no risk of collision or damage
+
+            Consider the previous analysis when analyzing the current frame. If the situation 
+            is evolving, explain the changes in the 'changes' field."""
                     
             response = self._get_vision_analysis(prompt, base64_image)
-            self.scene_queue.put(response)
+            
+            # Try to parse JSON response
+            try:
+                parsed_response = json.loads(response)
+                self.scene_queue.put(parsed_response)
+            except json.JSONDecodeError as e:
+                print(f"Failed to parse JSON response: {e}")
+                print(f"Raw response: {response}")
+                self.scene_queue.put(None)
+                
         except Exception as e:
             print(f"Scene analysis error: {e}")
 
@@ -282,3 +315,50 @@ Rate the accident risk from 1-10 and explain why, considering:
             pass
 
         return self.current_analysis if updated else None 
+
+    def _analyze_accident_vehicles(self, base64_image, detected_objects, scene_analysis):
+        """Analyze which vehicles are involved in an accident when collision or damage is detected"""
+        try:
+            if scene_analysis.get('status') in ['COLLIDING', 'DAMAGED']:
+                # Format detected objects for the prompt
+                objects_info = "\n".join([
+                    f"Vehicle ID {obj['track_id']}: at position ({obj['x']}, {obj['y']}), "
+                    f"size {obj['width']}x{obj['height']}"
+                    for obj in detected_objects if obj['track_id'] is not None
+                ])
+
+                prompt = f"""Given the following scene analysis:
+                {json.dumps(scene_analysis, indent=2)}
+
+                And these detected vehicles:
+                {objects_info}
+
+                Return a JSON response identifying the vehicles involved in the accident:
+                {{
+                    "involved_vehicles": [
+                        {{
+                            "track_id": <vehicle_id>,
+                            "role": "<COLLIDING|DAMAGED>",
+                            "position": {{"x": <x_coord>, "y": <y_coord>}},
+                            "confidence": <0.0-1.0>
+                        }}
+                    ],
+                    "explanation": "brief explanation of why these vehicles were selected"
+                }}
+                
+                Only include vehicles that you are confident are involved in the accident based on 
+                their position and the scene context."""
+
+                response = self._get_vision_analysis(prompt, base64_image)
+                
+                try:
+                    parsed_response = json.loads(response)
+                    return parsed_response
+                except json.JSONDecodeError as e:
+                    print(f"Failed to parse accident vehicles JSON response: {e}")
+                    print(f"Raw response: {response}")
+                    return None
+
+        except Exception as e:
+            print(f"Accident vehicles analysis error: {e}")
+            return None 

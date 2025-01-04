@@ -182,3 +182,80 @@ class RiskVisualizer:
                     risk_vehicles[id2] = risk_level
         
         return risk_vehicles
+
+    def draw_accident_verification(self, frame, detected_objects, involved_vehicles):
+        """Draw only the vehicles involved in accidents on a clean frame"""
+        verification_frame = frame.copy()
+        
+        if not involved_vehicles or 'involved_vehicles' not in involved_vehicles:
+            return verification_frame
+        
+        # Draw each involved vehicle
+        for vehicle in involved_vehicles['involved_vehicles']:
+            track_id = vehicle['track_id']
+            role = vehicle['role']
+            
+            # Find matching detected object
+            matching_object = next(
+                (obj for obj in detected_objects if obj['track_id'] == track_id),
+                None
+            )
+            
+            if matching_object:
+                # Get box coordinates
+                x, y = matching_object['x'], matching_object['y']
+                w, h = matching_object['width'], matching_object['height']
+                
+                # Choose color based on role
+                color = (0, 0, 255) if role == 'COLLIDING' else (128, 0, 128)  # Red for colliding, Purple for damaged
+                
+                # Draw bounding box
+                cv2.rectangle(verification_frame,
+                             (int(x - w/2), int(y - h/2)),
+                             (int(x + w/2), int(y + h/2)),
+                             color, 2)
+                
+                # Draw label with ID, role, and confidence
+                label = f"ID:{track_id} {role} ({vehicle['confidence']:.2f})"
+                label_pos = (int(x - w/2), int(y - h/2 - 5))
+                
+                # Get label size for background
+                label_size = cv2.getTextSize(label, self.font, 0.5, 2)[0]
+                
+                # Draw background rectangle for text
+                cv2.rectangle(verification_frame,
+                             (label_pos[0], label_pos[1] - label_size[1] - 2),
+                             (label_pos[0] + label_size[0], label_pos[1] + 2),
+                             (0, 0, 0), -1)
+                
+                # Draw label
+                cv2.putText(verification_frame, label, label_pos,
+                           self.font, 0.5, color, 2)
+        
+        # Draw explanation text at the bottom of the frame
+        if 'explanation' in involved_vehicles:
+            explanation = involved_vehicles['explanation']
+            # Split explanation into lines if it's too long
+            max_line_length = 80
+            words = explanation.split()
+            lines = []
+            current_line = []
+            
+            for word in words:
+                if len(' '.join(current_line + [word])) <= max_line_length:
+                    current_line.append(word)
+                else:
+                    lines.append(' '.join(current_line))
+                    current_line = [word]
+            if current_line:
+                lines.append(' '.join(current_line))
+            
+            # Draw each line
+            y_position = verification_frame.shape[0] - 10 - (len(lines) * 30)
+            for line in lines:
+                cv2.putText(verification_frame, line,
+                           (10, y_position),
+                           self.font, 0.6, (255, 255, 255), 2)
+                y_position += 30
+        
+        return verification_frame
