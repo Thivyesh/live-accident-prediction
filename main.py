@@ -19,10 +19,10 @@ def main():
     detector = ObjectDetector()
     tracker = TrajectoryTracker()
     analyzer = RiskAnalyzer(
-        provider='ollama',
-        # api_key=api_key,
-        model='llava:latest',
-        ollama_host='http://localhost:11434'
+        provider='openai',
+        api_key=api_key,
+        # model='llava:latest',
+        # ollama_host='http://localhost:11434'
     )
     visualizer = RiskVisualizer()
     video_processor = VideoProcessor()

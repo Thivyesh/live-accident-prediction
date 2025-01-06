@@ -21,6 +21,30 @@ class VideoProcessor:
             with open(self.analysis_file, 'r') as f:
                 self.risk_history = json.load(f)
 
+    def save_analysis_results(self, frame_count, analysis):
+        """Save analysis results to JSON"""
+        try:
+            # Create new result entry
+            result = {
+                'frame': frame_count,
+                'timestamp': time.time(),
+                'analysis': analysis
+            }
+            
+            # Append to history
+            self.risk_history.append(result)
+            
+            # Write entire history to file
+            with open(self.analysis_file, 'w') as f:
+                json.dump(self.risk_history, f, indent=4)
+                
+            print(f"Saved analysis for frame {frame_count}")  # Debug logging
+            
+        except Exception as e:
+            print(f"Error saving analysis results: {str(e)}")
+            import traceback
+            print(traceback.format_exc())
+
     def save_verification_image(self, frame_count, frame, detected_objects, involved_vehicles):
         """Save verification image when accidents are detected"""
         try:

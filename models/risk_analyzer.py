@@ -85,7 +85,7 @@ class RiskAnalyzer:
             Previous frame analysis was:
             {previous_analysis}
 
-            Return your analysis in the following JSON format:
+            Return your analysis in the following JSON format without any markdown formatting or code block syntax:
             {{
                 "status": "<COLLISION_RISK|DAMAGED|COLLIDING|SAFE>",
                 "description": "detailed description of the scene",
@@ -99,17 +99,26 @@ class RiskAnalyzer:
             - SAFE: if there is no risk of collision or damage
 
             Consider the previous analysis when analyzing the current frame. If the situation 
-            is evolving, explain the changes in the 'changes' field."""
+            is evolving, explain the changes in the 'changes' field.
+            
+            Important: Return only the JSON object, without any markdown formatting or explanation."""
                     
             response = self._get_vision_analysis(prompt, base64_image)
+            
+            # Clean up response - remove markdown code block if present
+            if response.startswith('```'):
+                response = response.split('\n', 1)[1]  # Remove first line
+                response = response.rsplit('\n', 1)[0]  # Remove last line
+                response = response.replace('```json\n', '').replace('```', '').strip()
             
             # Try to parse JSON response
             try:
                 parsed_response = json.loads(response)
                 self.scene_queue.put(parsed_response)
+                print(f"Parsed response: {parsed_response}")
             except json.JSONDecodeError as e:
                 print(f"Failed to parse JSON response: {e}")
-                print(f"Raw response: {response}")
+                # print(f"Raw response: {response}")
                 self.scene_queue.put(None)
                 
         except Exception as e:
@@ -138,8 +147,9 @@ Rate the accident risk from 1-10 and explain why, considering:
             
             response = self._get_vision_analysis(prompt, base64_image)
             self.risk_queue.put(response)
-        except Exception as e:
-            print(f"Risk analysis error: {e}")
+        except Exception:
+            # print(f"Risk analysis error: {e}")
+            pass
         finally:
             self.processing = False
 
@@ -288,7 +298,10 @@ Rate the accident risk from 1-10 and explain why, considering:
         try:
             scene_desc = self.scene_queue.get_nowait()
             if scene_desc:
+                # Store the entire JSON response
                 self.current_analysis['scene_description'] = scene_desc
+                # Update previous status
+                self.current_analysis['previous_status'] = scene_desc.get('status', 'SAFE')
                 print("Updated scene description:", scene_desc)  # Debug logging
                 updated = True
         except Empty:
@@ -298,7 +311,7 @@ Rate the accident risk from 1-10 and explain why, considering:
             risk_assessment = self.risk_queue.get_nowait()
             if risk_assessment:
                 self.current_analysis['risk_assessment'] = risk_assessment
-                print("Updated risk assessment:", risk_assessment)  # Debug logging
+                # print("Updated risk assessment:", risk_assessment)  # Debug logging
                 # Try to extract risk score
                 try:
                     score_match = re.search(r'(?:Accident Risk Rating:|Risk Rating:|Risk Assessment:)\s*\*?\*?(\d+)(?:/10)?', 

@@ -33,12 +33,16 @@ class RiskVisualizer:
 
     def _draw_status(self, frame, risk_assessment):
         """Draw overall status on the frame"""
-        frame_status = risk_assessment.get('scene_description', 'STATUS: SAFE')
-        if not frame_status:
+        if isinstance(risk_assessment.get('scene_description'), dict):
+            scene_desc = risk_assessment['scene_description']
+            status = scene_desc.get('status', 'SAFE')
+            description = scene_desc.get('description', '')
+            frame_status = f"STATUS: {status}"
+        else:
             frame_status = 'STATUS: SAFE'
         
         # Get status color
-        status = frame_status.split(': ')[1] if ': ' in frame_status else 'SAFE'
+        status = status if 'status' in locals() else 'SAFE'
         status_color = self.color_map.get(status, self.color_map['SAFE'])
         
         # Calculate position and size
